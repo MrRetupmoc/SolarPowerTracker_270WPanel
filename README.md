@@ -1,4 +1,4 @@
-# SolarPowerTracker_270WPanel
+# SolarPowerTracker_270WPanel.ino
 Adalogger Based Solar Power Tracker
 
 Author : Evan Richinson aka MrRetupmoc42
