@@ -18,7 +18,10 @@ January 2nd 2016   : Storage Update for MTC, Now MultiStores S,M,H,D and Y,
                       Linerization Added to Calculations, Sleep/Status LED Updated and
                       Started Working on Averages for Miniute Update ( Playing with Arrays )
 January 3rd 2016   : Fought With the Adalogger not taking new code.... :(
-January 4th 2016   : Updated some Logic and Linerization ( Still needs more work )
+January 4th 2016   : Reset Fixed Adalogger to take code again...
+                      Updated some Logic and Linerization with a Mega (Converted to a 3v3 Analog Pin Controller ),
+                      Averaging Code Fails ( Reverted for now but still working on it )
+                   
 -------------------------------------------------------------------------------------------------------*/
 
 //SD Card Setup and File Delimiters
@@ -57,7 +60,7 @@ January 4th 2016   : Updated some Logic and Linerization ( Still needs more work
   bool PanalAtChargeVoltage = false;         //Charging the Battery
   bool PanalOverChargeVoltage = false;       //Sunny But Don't Need to Charge
 
-  bool Debug = true;
+  bool Debug = false;
   int VoltageOffset = 1;
 
   //This is the "MTC ( MicroProcessor Time Clock )" Setup
@@ -110,7 +113,7 @@ void setup() {
   dht.begin();
 
   digitalWrite(StatusLed, HIGH);
-  delay(5000); //while (!Serial) { }
+  delay(5000);
   digitalWrite(StatusLed, LOW);
 
   if (Serial) Serial.println("Full Mode Initialiazation");
@@ -139,10 +142,13 @@ void loop() {
   MeasureVSolarPanel = analogRead(VSolar);
   MeasureISolarPanel = analogRead(ISolar);
   
-  //Need to do the thing to get the value every 5 sec?
-  //delay(2000)
-  MeasureTemperature = dht.readTemperature();
-  MeasureHumidity = dht.readHumidity();
+  //Adafruit says to poll every 2 seconds or more.... what will 1 second do? break it?
+  if (SecondCount%2 == 0) {
+    MeasureTemperature = dht.readTemperature(); //30;//
+    MeasureHumidity = dht.readHumidity(); //40;//
+  }
+
+
   
   //Calculate to Correct Values
   //Internal Resistor Divider Setup 2x
@@ -153,48 +159,33 @@ void loop() {
 
 
   //External Resistor Divider Setup 4x
-  MeasuredVBatLeadAcid *= 4; //Resistor Divider Inside is 4x
-  MeasuredVBatLeadAcid *= 3.3; //WORKS Convert to Voltage of Board
-  MeasuredVBatLeadAcid /= 1024; //WORKS Convert the Counts per Voltage
-  //Measured > Readout = Correction
-  //10.64v --> 10.65v = % Error @ 4x
-  //11.81v --> 11.83v = % Error @ 4x
-  //12.49v --> 12.53v = % Error @ 4x
-  //13.16v --> 13.06v = % Error @ 4x
-  //13.55v --> 13.06v = % Error @ 4x
-  //14.49v --> 6.v = % Error @ 4x
-  //MeasuredVBatLeadAcid *= 0.9674; //
-  //MeasuredVBatLeadAcid += 0.3844; //
-  MeasuredVBatLeadAcid *= 0.99; //% Error Offset
+  //  Counts > Readout = Correction ( int to V ), 3.3v / 1024 = 3.22mV per Step
+    //584    --> 10.73v
+    //635    --> 11.69v
+    //737    --> 13.59v
+  MeasuredVBatLeadAcid *= (0.01868 * (5 / 3.3)); //m, Tuned with a Mega, 5v per Analog Pin not 3v3...
+  MeasuredVBatLeadAcid -= 0.1783; //b
 
 
   //External Autopilot 50V 180A Version
-  //50V/180A = 63.69mV / Volt, 18.30mV / Amp.
-  //3.3v / 1024 = 3.22mV per Step
-
+    //50V/180A = 63.69mV / Volt, 18.30mV / Amp.
+    //3.3v / 1024 = 3.22mV per Step
 
   //Solar Panel Voltage ( With Lineraization )
-  //63.69mV / Volt / 3.22 = 19.7795
-  //MeasureVSolarPanel *= 15.8; //Set for Somewhat Real Data was 0.0754 in Wattmeter 
-  MeasureVSolarPanel *= 3.3; //WORKS Convert to Voltage of Board 
-  MeasureVSolarPanel /= 1024; //WORKS Convert the Counts per Voltage
-  //Measured > Readout = Correction
-  //12.37v --> 12.9v = 3% Error @ 15.8x
-  //12.42v --> 12.64v = % Error @ 15.8x
-  MeasureVSolarPanel *= 1;    //
-  MeasureVSolarPanel += 0;    //
-
+    //63.69mV / Volt / 3.22 = 19.7795
+  //  Counts > Readout = Correction ( int to V ), 3.3v / 1024 = 3.22mV per Step
+    //0    --> 00.00v
+    //310  --> 22.60v
+  MeasureVSolarPanel *= (0.07290 * (5 / 3.3)); //m, Tuned with a Mega, 5v per Analog Pin not 3v3...
+  //MeasureVSolarPanel += 0; //b
 
   //Solar Panel Current ( With Lineraization )
-  //18.30mV / Amp / 3.22 = 5.6832
-  //MeasureISolarPanel *= 5; //5, Set for RAW Data was 0.67 in Wattmeter
-  //Measured > Readout = Correction ( v to I )
-  //00.080v --> 00.02a
-  //00.140v --> 15.00a
-  MeasureISolarPanel = MeasureISolarPanel * 249.7;   //m = 5.46
-  MeasureISolarPanel = MeasureISolarPanel - 19.95; //b = 0.7858
-  MeasureISolarPanel = MeasureISolarPanel * 3.3; //WORKS Convert to Voltage of Board
-  MeasureISolarPanel = MeasureISolarPanel / 1024; //WORKS Convert the Counts per Voltage
+    //18.30mV / Amp / 3.22 = 5.6832
+  //  Counts > Readout = Correction ( int to I ), 3.3v / 1024 = 3.22mV per Step
+    //3    --> 01.30a
+    //45   --> 12.00a
+  MeasureISolarPanel *= (0.2548 * (5 / 3.3)); //m, Tuned with a Mega, 5v per Analog Pin not 3v3...
+  MeasureISolarPanel += 0.5357; //b
   
 
   //Panel Wattage Calulation ( Simple )
@@ -266,8 +257,8 @@ void loop() {
   //Datalog Spreadsheet Setup ------------------------------------------------------------------------------------------------------------------
 
   if(SecondCount < 0) { //Startup Print Values?
-    //Datalog Spreadsheet Setup
-    dataString = "Year" + Split + "Day" + Split + "Hour" + Split + "Minute" + Split + 
+  //Datalog Spreadsheet Setup
+  dataString = "Year" + Split + "Day" + Split + "Hour" + Split + "Minute" + Split + 
       "Second" + Split + "LipoBat_V" + Split + "LeadAcidBat_V" + Split + "SolarPanel_V" + Split + 
       "SolarPanel_I" + Split + "SolarPanel_W" + Split + "Temperature" + Split + "Humidity" + End;
   }
@@ -281,7 +272,7 @@ void loop() {
   }
 
   //Datalog All Values to One File for Second Based Updates
-  if (SecondCount < SecondCount_Max) {// && PanalAtChargeVoltage && ) { //Second Tick Capture
+  if (SecondCount < SecondCount_Max) { //Second Tick Capture
     //Save Data we Captured to File
     File datalogFile_Sec = SD.open("sec.txt", FILE_WRITE);
     
@@ -292,15 +283,15 @@ void loop() {
       if (Serial && Debug) Serial.println(dataString);
     }
     else if (Serial) Serial.println("Error Opening Second_Datalog.txt");
-    /*
+/*
     //Save to the Array for Averaging Later
     CapturesperMinuite[0][SecondCount] = MeasuredVBatLipo; //Dataspot Save x value
     CapturesperMinuite[1][SecondCount] = MeasuredVBatLeadAcid; //Dataspot Save x value
     CapturesperMinuite[2][SecondCount] = MeasureVSolarPanel; //Dataspot Save x value
     CapturesperMinuite[3][SecondCount] = MeasureISolarPanel; //Dataspot Save x value
     CapturesperMinuite[4][SecondCount] = MeasureWSolarPanel; //Dataspot Save x value
-    //CapturesperMinuite[5][SecondCount] = Temp; //Dataspot Save x value
-    //CapturesperMinuite[6][SecondCount] = Humid; //Dataspot Save x value
+    CapturesperMinuite[5][SecondCount] = MeasureTemperature; //Dataspot Save x value
+    CapturesperMinuite[6][SecondCount] = MeasureHumidity; //Dataspot Save x value
     
     MinAveragingValue += 1;
     */
@@ -340,10 +331,9 @@ void loop() {
   if (SecondCount >= SecondCount_Max) { //Minute Update, Second Reset
     SecondCount -= SecondCount_Max;
     MinuteCount += 1;
-
+/*
     //DataLog Values to the Minute Based File
     //Average Min Values 
-    /*
     for(int i = 0; i < dataspots; i++) {
       for(int j = 0; j < SecondCount_Max; i++) {
         MinuiteAverage[i] += CapturesperMinuite[i][j]; //Save all Values to Average Array
@@ -352,12 +342,11 @@ void loop() {
       MinuiteAverage[i] = MinuiteAverage[i] / MinAveragingValue; //Make the Average the Average... ( Only Works if Data is Every Second... )
     }
     MinAveragingValue = 0; // Reset the Average
-    
+
     //Average String Setup
     String MinAveragedataString = String(MinuiteAverage[0]) + Split + String(MinuiteAverage[1]) + Split + String(MinuiteAverage[2]) + Split + 
-      String(MinuiteAverage[3]) + Split + String(MinuiteAverage[4]) + Split + "Average" + End;//Split + String(MinuiteAverage[5]) + Split + String(MinuiteAverage[6]) + Split + "Average" + End;
-      */
-
+      String(MinuiteAverage[3]) + Split + String(MinuiteAverage[4]) + Split + String(MinuiteAverage[5]) + Split + String(MinuiteAverage[6]) + Split + "Average" + End;
+*/
     //Save Data we Captured to File
     File datalogFile_Min = SD.open("min.txt", FILE_WRITE);
     if (datalogFile_Min) {
@@ -439,10 +428,12 @@ void loop() {
 }
 
 void EndDelay(int x) {
+  ///* //Disable // Enable time based Code
   for(int i = 0; i < x; i++) {
     digitalWrite(StatusLed, HIGH);
-    //delay(50);
+    delay(50);
     digitalWrite(StatusLed, LOW);
-    //delay(950);
+    delay(950);
   }
+  //*/
 }
